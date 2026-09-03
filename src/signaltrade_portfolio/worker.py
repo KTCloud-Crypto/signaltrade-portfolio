@@ -8,6 +8,7 @@ from sqlalchemy import distinct, select
 from signaltrade_portfolio.config import settings
 from signaltrade_portfolio.database import SessionLocal
 from signaltrade_portfolio.identity_client import get_exchange_credentials
+from signaltrade_portfolio.incidents import record_currency_state
 from signaltrade_portfolio.models import user_strategy_table
 from signaltrade_portfolio.reconciliation import (
     actual_coin_totals, calculate_reconciliation_state, recorded_strategy_volumes,
@@ -37,10 +38,14 @@ def monitor_positions_once() -> tuple[int, int]:
                 for currency in set(actual) | set(recorded):
                     state = calculate_reconciliation_state(
                         actual.get(currency, 0.0), recorded.get(currency, 0.0))
+                    record_currency_state(
+                        db, user_id=user_id, currency=currency,
+                        actual_total=state.actual_total, strategy_volume=state.strategy_volume)
                     if state.status == "shortfall":
                         shortfalls += 1
                         logger.warning("Portfolio shortfall: user_id=%s currency=%s difference=%s",
                                        user_id, currency, state.difference)
+                db.commit()
                 checked += 1
             except Exception as error:
                 db.rollback()

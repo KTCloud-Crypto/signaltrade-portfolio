@@ -21,3 +21,5 @@ strategy_execution_table = Table("strategy_execution", Base.metadata,
     Column("price", Float, nullable=False), Column("executed_volume", Float),
     Column("average_price", Float), Column("paid_fee", Float),
     Column("created_at", DateTime, nullable=False))
+api_key_table = Table("api_key", Base.metadata,
+    Column("id", Integer, primary_key=True), Column("user_id", Integer, nullable=False))

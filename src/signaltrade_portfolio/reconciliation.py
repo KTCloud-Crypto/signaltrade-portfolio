@@ -45,3 +45,22 @@ def recorded_strategy_volumes(db, user_id: int) -> dict[str, float]:
         totals[currency] = totals.get(currency, 0.0) + load_strategy_position(
             db, row.id, "live").volume
     return totals
+
+
+def recorded_strategy_positions(db, user_id: int) -> list[dict]:
+    us, st, market = user_strategy_table, strategy_table, supported_market_table
+    rows = db.execute(select(
+        us.c.id.label("subscription_id"), market.c.code.label("market"),
+        st.c.name.label("strategy_name"), st.c.code.label("strategy_code"),
+    ).select_from(
+        us.join(st, st.c.id == us.c.strategy_id).join(market, market.c.id == us.c.market_id)
+    ).where(us.c.user_id == user_id, us.c.mode == "live", st.c.code != "manual_hold_v1")).all()
+    result = []
+    for row in rows:
+        position = load_strategy_position(db, row.subscription_id, "live")
+        if position.volume > 0:
+            result.append({"subscription_id": row.subscription_id, "market": row.market,
+                           "strategy_name": row.strategy_name, "strategy_code": row.strategy_code,
+                           "volume": position.volume,
+                           "average_buy_price": position.average_buy_price})
+    return result
