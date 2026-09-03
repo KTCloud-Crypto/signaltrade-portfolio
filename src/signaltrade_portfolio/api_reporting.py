@@ -40,6 +40,14 @@ def _strategy_rows(db, user_id: int, mode: str):
             strategy.c.code != "manual_hold_v1")).mappings().all()
 
 
+def _reserved_amount(db, user_id: int, mode: str, rows=None) -> float:
+    """Return budgets that are still cash-funded because no position exists yet."""
+    subscriptions = rows if rows is not None else _strategy_rows(db, user_id, mode)
+    return sum(float(row["allocated_amount"] or 0) for row in subscriptions
+               if row["enabled"] and row["allocated_amount"] is not None
+               and load_strategy_position(db, row["id"], mode).volume <= 0)
+
+
 def _reconciliation(accounts, db, user_id: int) -> list[PositionReconciliationOut]:
     actual_rows = {row["currency"]: row for row in accounts if row["currency"] != "KRW"}
     actual = actual_coin_totals(accounts); recorded = recorded_strategy_volumes(db, user_id)
@@ -107,7 +115,8 @@ def dashboard(db=Depends(get_db), user: AuthenticatedUser = Depends(get_current_
             strategies=next((r.strategies for r in reconciliation if r.currency == currency), [])))
     krw=next((row for row in accounts if row["currency"] == "KRW"), None)
     available=float(krw["balance"]) if krw else 0; locked=float(krw["locked"]) if krw else 0
-    reserved=sum((row["allocated_amount"] or 0) for row in _strategy_rows(db,user.id,"live") if row["enabled"])
+    live_rows = _strategy_rows(db, user.id, "live")
+    reserved = _reserved_amount(db, user.id, "live", live_rows)
     account=ExchangeAccountStatusOut(available_krw=available, strategy_reserved_krw=reserved,
         strategy_available_krw=max(0, available-reserved), locked_krw=locked, total_krw=available+locked,
         coin_evaluation_amount=coin_value, account_equity=available+locked+coin_value,
