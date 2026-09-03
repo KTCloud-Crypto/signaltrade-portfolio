@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     internal_service_token: str = ""
     identity_service_url: str = "http://identity-api:8000"
     identity_service_timeout_seconds: float = 5.0
+    upbit_api_base_url: str = "https://api.upbit.com"
+    upbit_api_timeout_seconds: float = 5.0
     position_reconciliation_seconds: int = 60
     metrics_enabled: bool = True
     portfolio_metrics_port: int = 9103

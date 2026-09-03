@@ -15,11 +15,9 @@ def test_worker_checks_each_live_user_once_without_writes(monkeypatch):
     monkeypatch.setattr("signaltrade_portfolio.worker.get_exchange_credentials",
                         lambda user_id: ExchangeCredentials(access_key="a", secret_key="s"))
 
-    class Upbit:
-        def get_balances(self):
-            return [{"currency": "KRW", "balance": "1000", "locked": "0"}]
-
-    monkeypatch.setattr("signaltrade_portfolio.worker.pyupbit.Upbit", lambda *_: Upbit())
+    monkeypatch.setattr("signaltrade_portfolio.worker.get_accounts", lambda **kwargs: [
+        {"currency": "KRW", "balance": "1000", "locked": "0"}
+    ])
     monkeypatch.setattr("signaltrade_portfolio.worker.recorded_strategy_volumes",
                         lambda db, user_id: {})
     assert monitor_positions_once() == (1, 0)

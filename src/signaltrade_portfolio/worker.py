@@ -2,7 +2,6 @@ import logging
 import signal
 import threading
 
-import pyupbit
 from prometheus_client import start_http_server
 from sqlalchemy import distinct, select
 
@@ -13,6 +12,7 @@ from signaltrade_portfolio.models import user_strategy_table
 from signaltrade_portfolio.reconciliation import (
     actual_coin_totals, calculate_reconciliation_state, recorded_strategy_volumes,
 )
+from signaltrade_portfolio.upbit_accounts import get_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +26,12 @@ def monitor_positions_once() -> tuple[int, int]:
         for user_id in user_ids:
             try:
                 credentials = get_exchange_credentials(user_id)
-                accounts = pyupbit.Upbit(credentials.access_key,
-                                         credentials.secret_key).get_balances()
-                if not isinstance(accounts, list):
-                    raise ValueError("invalid Upbit balance response")
+                accounts = get_accounts(
+                    access_key=credentials.access_key,
+                    secret_key=credentials.secret_key,
+                    base_url=settings.upbit_api_base_url,
+                    timeout=settings.upbit_api_timeout_seconds,
+                )
                 actual = actual_coin_totals(accounts)
                 recorded = recorded_strategy_volumes(db, user_id)
                 for currency in set(actual) | set(recorded):
