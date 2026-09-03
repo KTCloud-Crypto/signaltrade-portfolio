@@ -7,6 +7,8 @@ from signaltrade_portfolio.config import settings
 from signaltrade_portfolio.database import get_db
 from signaltrade_portfolio.models import strategy_table, supported_market_table, user_strategy_table
 from signaltrade_portfolio.positions import load_strategy_position
+from signaltrade_portfolio.identity_client import get_exchange_credentials
+from signaltrade_portfolio.upbit_accounts import get_accounts
 
 
 def require_internal_service_token(
@@ -39,3 +41,11 @@ def open_positions(user_id: int, db=Depends(get_db)) -> list[dict]:
                 "market": row.market, "mode": row.mode, "volume": position.volume,
                 "average_buy_price": position.average_buy_price})
     return result
+
+
+@router.get("/users/{user_id}/balance")
+def user_balance(user_id: int) -> list[dict]:
+    credentials = get_exchange_credentials(user_id)
+    return get_accounts(access_key=credentials.access_key, secret_key=credentials.secret_key,
+                        base_url=settings.upbit_api_base_url,
+                        timeout=settings.upbit_api_timeout_seconds)
