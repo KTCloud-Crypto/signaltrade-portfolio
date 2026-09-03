@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "postgresql://signaltrade:signaltrade-local@localhost:5432/signaltrade"
     internal_service_token: str = ""
+    identity_service_url: str = "http://identity-api:8000"
+    identity_service_timeout_seconds: float = 5.0
     position_reconciliation_seconds: int = 60
     metrics_enabled: bool = True
     portfolio_metrics_port: int = 9103
