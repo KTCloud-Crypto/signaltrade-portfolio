@@ -51,6 +51,8 @@ def recorded_strategy_positions(db, user_id: int) -> list[dict]:
     us, st, market = user_strategy_table, strategy_table, supported_market_table
     rows = db.execute(select(
         us.c.id.label("subscription_id"), market.c.code.label("market"),
+        st.c.id.label("strategy_id"), us.c.enabled, us.c.invest_ratio,
+        us.c.allocated_amount, us.c.allocation_mode, us.c.timeframe_minutes,
         st.c.name.label("strategy_name"), st.c.code.label("strategy_code"),
     ).select_from(
         us.join(st, st.c.id == us.c.strategy_id).join(market, market.c.id == us.c.market_id)
@@ -60,6 +62,10 @@ def recorded_strategy_positions(db, user_id: int) -> list[dict]:
         position = load_strategy_position(db, row.subscription_id, "live")
         if position.volume > 0:
             result.append({"subscription_id": row.subscription_id, "market": row.market,
+                           "strategy_id": row.strategy_id, "enabled": row.enabled,
+                           "invest_ratio": row.invest_ratio, "allocated_amount": row.allocated_amount,
+                           "allocation_mode": row.allocation_mode,
+                           "timeframe_minutes": row.timeframe_minutes,
                            "strategy_name": row.strategy_name, "strategy_code": row.strategy_code,
                            "volume": position.volume,
                            "average_buy_price": position.average_buy_price})
