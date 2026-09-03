@@ -31,7 +31,7 @@ KST = timezone(timedelta(hours=9))
 def _strategy_rows(db, user_id: int, mode: str):
     us, strategy, market = user_strategy_table, strategy_table, supported_market_table
     return db.execute(select(us, strategy.c.code.label("strategy_code"),
-        strategy.c.name.label("strategy_name"), strategy.c.id.label("strategy_id"),
+        strategy.c.name.label("strategy_name"),
         market.c.code.label("market"), market.c.display_name.label("market_name"),
         strategy.c.timeframe_minutes.label("default_timeframe"),
         strategy.c.default_invest_ratio.label("default_ratio")).select_from(
