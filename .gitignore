@@ -10,3 +10,12 @@ __pycache__/
 *.key
 *.p12
 *.pfx
+.DS_Store
+*.log
+kubeconfig*
+coverage.xml
+.coverage
+htmlcov/
+.mypy_cache/
+.tox/
+.nox/
