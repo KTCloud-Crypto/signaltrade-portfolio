@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.responses import Response
 
 from signaltrade_portfolio.api_internal import router
 from signaltrade_portfolio.api_reconciliation import router as reconciliation_router
@@ -28,3 +30,8 @@ def ready() -> dict[str, str]:
     except SQLAlchemyError as error:
         raise HTTPException(status_code=503, detail="database unavailable") from error
     return {"status": "ready"}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
