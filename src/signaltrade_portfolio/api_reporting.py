@@ -21,6 +21,11 @@ from signaltrade_portfolio.schemas import (
     StrategyPositionOut, TickerPerformance, UpbitBalanceOut,
 )
 from signaltrade_portfolio.api_reconciliation import _accounts
+from signaltrade_portfolio.analytics import (
+    AnalysisSourceTrade, analyze_trades, build_daily_pnl_points, build_metric,
+    kst_date, utc_start_of_kst_day,
+)
+from signaltrade_portfolio.models import PositionSyncAdjustment, strategy_execution_table
 
 position_router = APIRouter(prefix="/positions", tags=["Portfolio"])
 strategy_router = APIRouter(prefix="/strategies", tags=["Portfolio"])
@@ -133,8 +138,11 @@ def summary(db=Depends(get_db), user: AuthenticatedUser = Depends(get_current_us
         pos=load_strategy_position(db,row["id"],"live"); purchase+=pos.cost_basis
         evaluation+=pos.volume*prices.get(row["market"],0)
     unrealized=evaluation-purchase
+    analyzed, _ = _analyzed_trades(db, user.id, "live")
+    realized = sum(row.pnl for row in analyzed if row.action == "sell")
     return LiveAccountSummaryOut(purchase_amount=purchase,evaluation_amount=evaluation,
-        realized_profit_loss=0,unrealized_profit_loss=unrealized,profit_loss=unrealized,
+        realized_profit_loss=realized,unrealized_profit_loss=unrealized,
+        profit_loss=realized+unrealized,
         return_rate=unrealized/purchase*100 if purchase else None)
 
 
@@ -158,34 +166,59 @@ def positions(mode: Literal["simulated","live"] = Query("simulated"), market: st
     return result
 
 
-def _metric(rows):
-    sells=[r for r in rows if r["action"]=="sell"]
-    buy=sum(float((r["average_price"] or r["price"])*(r["executed_volume"] or r["order_volume"] or 0)) for r in rows if r["action"]=="buy")
-    sell=sum(float((r["average_price"] or r["price"])*(r["executed_volume"] or r["order_volume"] or 0)) for r in sells)
-    fees=sum(float(r["paid_fee"] or 0) for r in rows)
-    return AnalyticsMetric(realized_pnl=0,total_fee=round(fees,4),trade_count=len(rows),sell_count=len(sells),
-        win_count=0,win_rate=0,buy_amount=round(buy,4),sell_amount=round(sell,4))
+def _analyzed_trades(db, user_id: int, mode: str):
+    rows=db.execute(text("""SELECT e.* FROM strategy_execution e JOIN user_strategy us ON us.id=e.user_strategy_id
+        JOIN strategy s ON s.id=us.strategy_id LEFT JOIN strategy_signal ss ON ss.id=e.signal_id
+        WHERE e.user_id=:uid AND e.mode=:mode AND s.code<>'manual_hold_v1'
+        AND COALESCE(ss.source,'')<>'external_sync' ORDER BY e.created_at"""),
+        {"uid":user_id,"mode":mode}).mappings().all()
+    source = [AnalysisSourceTrade(
+        id=row["id"], ticker=row["market"], action=row["action"],
+        price=row["average_price"] or row["price"],
+        volume=row["executed_volume"] or row["order_volume"],
+        status="success" if row["status"] == "simulated_success" else row["status"],
+        created_at=row["created_at"], position_key=row["user_strategy_id"],
+        paid_fee=row["paid_fee"],
+    ) for row in rows]
+    if mode == "live":
+        adjustment_rows = db.execute(select(
+            PositionSyncAdjustment,
+            supported_market_table.c.code.label("market"),
+        ).select_from(PositionSyncAdjustment.__table__
+            .join(user_strategy_table, user_strategy_table.c.id == PositionSyncAdjustment.user_strategy_id)
+            .join(strategy_table, strategy_table.c.id == user_strategy_table.c.strategy_id)
+            .join(supported_market_table, supported_market_table.c.id == user_strategy_table.c.market_id)
+        ).where(PositionSyncAdjustment.user_id == user_id,
+            PositionSyncAdjustment.action.in_(["deduct", "sell"]),
+            strategy_table.c.code != "manual_hold_v1")).all()
+        source.extend(AnalysisSourceTrade(
+            id=1_000_000_000+row.PositionSyncAdjustment.id, ticker=row.market,
+            action="sell", price=row.PositionSyncAdjustment.reference_price,
+            volume=row.PositionSyncAdjustment.volume, status="success",
+            created_at=row.PositionSyncAdjustment.created_at,
+            position_key=row.PositionSyncAdjustment.user_strategy_id, event_type="deduct",
+        ) for row in adjustment_rows)
+    return analyze_trades(source)
 
 
 @analytics_router.get("", response_model=AnalyticsOut)
 def analytics(mode: Literal["live","simulated"] = Query("live"), db=Depends(get_db),
               user: AuthenticatedUser = Depends(get_current_user)):
-    rows=db.execute(text("""SELECT e.* FROM strategy_execution e JOIN user_strategy us ON us.id=e.user_strategy_id
-        JOIN strategy s ON s.id=us.strategy_id LEFT JOIN strategy_signal ss ON ss.id=e.signal_id
-        WHERE e.user_id=:uid AND e.mode=:mode AND s.code<>'manual_hold_v1'
-        AND COALESCE(ss.source,'')<>'external_sync' ORDER BY e.created_at"""),{"uid":user.id,"mode":mode}).mappings().all()
-    valid=[r for r in rows if (r["status"] in ({"simulated_success"} if mode=="simulated" else {"success","partially_filled"}))
-           and (r["executed_volume"] or r["order_volume"])]
-    now=datetime.utcnow(); today=now.astimezone(KST).date()
-    points=[DailyPnlPoint(date=today-timedelta(days=i),pnl=0,cumulative_pnl=0) for i in range(29,-1,-1)]
-    metric=_metric(valid); empty=_metric([])
+    trades, excluded = _analyzed_trades(db, user.id, mode)
+    today = kst_date(datetime.utcnow())
+    today_start = utc_start_of_kst_day(today)
+    week_start = utc_start_of_kst_day(today-timedelta(days=today.weekday()))
+    month_start = utc_start_of_kst_day(today.replace(day=1))
     grouped=defaultdict(list)
-    for row in valid: grouped[row["market"]].append(row)
-    total=sum(m.buy_amount for m in [_metric(v) for v in grouped.values()])
-    tickers=[]
-    for ticker,items in grouped.items():
-        m=_metric(items); tickers.append(TickerPerformance(ticker=ticker,buy_amount=m.buy_amount,
-            sell_amount=m.sell_amount,realized_pnl=0,trade_count=m.trade_count,
-            weight=m.buy_amount/total*100 if total else 0))
-    return AnalyticsOut(all_time=metric,today=empty,week=empty,month=empty,daily_pnl=points,
-        tickers=tickers,excluded_trade_count=len(rows)-len(valid),fee_included=True)
+    for row in trades: grouped[row.ticker].append(row)
+    metrics={ticker:build_metric(items) for ticker,items in grouped.items()}
+    total=sum(item.buy_amount+item.sell_amount for item in metrics.values())
+    tickers=[TickerPerformance(ticker=ticker,buy_amount=item.buy_amount,
+        sell_amount=item.sell_amount,realized_pnl=item.realized_pnl,trade_count=item.trade_count,
+        weight=round((item.buy_amount+item.sell_amount)/total*100,2) if total else 0)
+        for ticker,item in metrics.items()]
+    tickers.sort(key=lambda item:item.buy_amount+item.sell_amount,reverse=True)
+    return AnalyticsOut(all_time=build_metric(trades),today=build_metric(trades,today_start),
+        week=build_metric(trades,week_start),month=build_metric(trades,month_start),
+        daily_pnl=build_daily_pnl_points(trades,today),tickers=tickers[:10],
+        excluded_trade_count=excluded,fee_included=True)

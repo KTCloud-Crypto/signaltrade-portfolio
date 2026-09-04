@@ -54,6 +54,14 @@ def monitor_positions_once() -> tuple[int, int]:
     return checked, shortfalls
 
 
+def monitor_positions_safely() -> tuple[int, int] | None:
+    try:
+        return monitor_positions_once()
+    except Exception:
+        logger.exception("Portfolio reconciliation cycle failed; retrying next interval")
+        return None
+
+
 def run() -> None:
     logging.basicConfig(level=logging.INFO)
     stop = threading.Event()
@@ -64,7 +72,9 @@ def run() -> None:
     logger.info("Portfolio worker started: reconciliation interval=%s",
                 settings.position_reconciliation_seconds)
     while not stop.is_set():
-        checked, shortfalls = monitor_positions_once()
-        logger.info("Portfolio reconciliation cycle: checked=%s shortfalls=%s",
-                    checked, shortfalls)
+        result = monitor_positions_safely()
+        if result is not None:
+            checked, shortfalls = result
+            logger.info("Portfolio reconciliation cycle: checked=%s shortfalls=%s",
+                        checked, shortfalls)
         stop.wait(max(10, settings.position_reconciliation_seconds))

@@ -28,3 +28,6 @@ strategy_execution_table = Table("strategy_execution", Base.metadata,
     Column("created_at", DateTime, nullable=False))
 api_key_table = Table("api_key", Base.metadata,
     Column("id", Integer, primary_key=True), Column("user_id", Integer, nullable=False))
+paper_account_table = Table("paper_account", Base.metadata,
+    Column("id", Integer, primary_key=True), Column("user_id", Integer, nullable=False),
+    Column("cash_balance", Float, nullable=False))
