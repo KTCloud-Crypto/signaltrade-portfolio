@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, text
 
 from signaltrade_portfolio.database import get_db
-from signaltrade_portfolio.identity_client import AuthenticatedUser, get_current_user
+from signaltrade_portfolio.identity_client import (
+    AuthenticatedUser, ExchangeCredentialsUnavailable, get_current_user,
+)
 from signaltrade_portfolio.market_price import get_prices
 from signaltrade_portfolio.models import strategy_table, supported_market_table, user_strategy_table
 from signaltrade_portfolio.positions import load_strategy_position
@@ -31,6 +33,14 @@ position_router = APIRouter(prefix="/positions", tags=["Portfolio"])
 strategy_router = APIRouter(prefix="/strategies", tags=["Portfolio"])
 analytics_router = APIRouter(prefix="/analytics", tags=["Analytics"])
 KST = timezone(timedelta(hours=9))
+
+
+def _dashboard_accounts(user_id: int) -> list[dict]:
+    """API Key를 아직 등록하지 않은 사용자는 빈 계좌 대시보드를 표시합니다."""
+    try:
+        return _accounts(user_id)
+    except ExchangeCredentialsUnavailable:
+        return []
 
 
 def _strategy_rows(db, user_id: int, mode: str):
@@ -91,7 +101,7 @@ def _portfolio(accounts, db, user_id: int, prices: dict[str, float]) -> Portfoli
 
 @position_router.get("/dashboard", response_model=PositionsDashboardOut)
 def dashboard(db=Depends(get_db), user: AuthenticatedUser = Depends(get_current_user)):
-    accounts = _accounts(user.id)
+    accounts = _dashboard_accounts(user.id)
     markets = [f"KRW-{row['currency']}" for row in accounts if row["currency"] != "KRW"]
     prices = get_prices(markets)
     balances = [UpbitBalanceOut(currency=row["currency"], balance=float(row["balance"]),
