@@ -1,3 +1,5 @@
+from signaltrade_portfolio import api_reporting
+from signaltrade_portfolio.identity_client import ExchangeCredentialsUnavailable
 from signaltrade_portfolio.main import app
 
 
@@ -15,3 +17,12 @@ def test_frontend_reporting_routes_and_dashboard_contract():
     assert set(spec["components"]["schemas"]["AnalyticsOut"]["properties"]) == {
         "all_time", "today", "week", "month", "daily_pnl", "tickers",
         "excluded_trade_count", "fee_included"}
+
+
+def test_dashboard_uses_empty_accounts_when_exchange_key_is_not_registered(monkeypatch):
+    def unavailable(_user_id: int):
+        raise ExchangeCredentialsUnavailable("API Key가 없습니다.")
+
+    monkeypatch.setattr(api_reporting, "_accounts", unavailable)
+
+    assert api_reporting._dashboard_accounts(1) == []
