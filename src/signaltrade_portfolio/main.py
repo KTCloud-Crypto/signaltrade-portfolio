@@ -8,8 +8,10 @@ from signaltrade_portfolio.api_internal import router
 from signaltrade_portfolio.api_reconciliation import router as reconciliation_router
 from signaltrade_portfolio.api_reporting import analytics_router, position_router, strategy_router
 from signaltrade_portfolio.database import SessionLocal
+from signaltrade_portfolio.telemetry import instrument_http
 
 app = FastAPI(title="SignalTrade Portfolio API", version="1.0.0")
+instrument_http(app)
 app.include_router(router)
 app.include_router(reconciliation_router)
 app.include_router(position_router)
