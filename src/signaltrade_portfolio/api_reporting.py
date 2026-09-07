@@ -43,6 +43,16 @@ def _dashboard_accounts(user_id: int) -> list[dict]:
         return []
 
 
+def _price_markets(accounts: list[dict], supported: set[str]) -> list[str]:
+    """Return only configured KRW markets that Upbit can price for the dashboard."""
+    return sorted({
+        market
+        for row in accounts
+        if row["currency"] != "KRW"
+        and (market := f"KRW-{row['currency']}") in supported
+    })
+
+
 def _strategy_rows(db, user_id: int, mode: str):
     us, strategy, market = user_strategy_table, strategy_table, supported_market_table
     return db.execute(select(us, strategy.c.code.label("strategy_code"),
@@ -102,16 +112,15 @@ def _portfolio(accounts, db, user_id: int, prices: dict[str, float]) -> Portfoli
 @position_router.get("/dashboard", response_model=PositionsDashboardOut)
 def dashboard(db=Depends(get_db), user: AuthenticatedUser = Depends(get_current_user)):
     accounts = _dashboard_accounts(user.id)
-    markets = [f"KRW-{row['currency']}" for row in accounts if row["currency"] != "KRW"]
-    prices = get_prices(markets)
+    supported = {row.code for row in db.execute(select(supported_market_table.c.code).where(
+        supported_market_table.c.enabled.is_(True))).all()}
+    prices = get_prices(_price_markets(accounts, supported))
     balances = [UpbitBalanceOut(currency=row["currency"], balance=float(row["balance"]),
         locked=float(row["locked"]), avg_buy_price=float(row["avg_buy_price"])) for row in accounts
         if float(row["balance"]) + float(row["locked"]) > 0]
     reconciliation = _reconciliation(accounts, db, user.id)
     portfolio = _portfolio(accounts, db, user.id, prices)
     recorded = recorded_strategy_volumes(db, user.id)
-    supported = {row.code for row in db.execute(select(supported_market_table.c.code).where(
-        supported_market_table.c.enabled.is_(True))).all()}
     assets=[]; coin_value=managed=unallocated_value=0.0
     for row in accounts:
         if row["currency"] == "KRW" or float(row["balance"]) + float(row["locked"]) <= 0: continue

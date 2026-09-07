@@ -26,3 +26,17 @@ def test_dashboard_uses_empty_accounts_when_exchange_key_is_not_registered(monke
     monkeypatch.setattr(api_reporting, "_accounts", unavailable)
 
     assert api_reporting._dashboard_accounts(1) == []
+
+
+def test_dashboard_prices_only_supported_krw_markets():
+    accounts = [
+        {"currency": "KRW"},
+        {"currency": "ETH"},
+        {"currency": "PURSE"},
+        {"currency": "XRP"},
+        {"currency": "ETH"},
+    ]
+
+    assert api_reporting._price_markets(accounts, {"KRW-ETH", "KRW-XRP"}) == [
+        "KRW-ETH", "KRW-XRP",
+    ]
