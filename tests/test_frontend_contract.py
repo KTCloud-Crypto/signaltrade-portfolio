@@ -28,7 +28,7 @@ def test_dashboard_uses_empty_accounts_when_exchange_key_is_not_registered(monke
     assert api_reporting._dashboard_accounts(1) == []
 
 
-def test_dashboard_prices_only_supported_krw_markets():
+def test_dashboard_attempts_to_price_every_krw_asset():
     accounts = [
         {"currency": "KRW"},
         {"currency": "ETH"},
@@ -37,6 +37,6 @@ def test_dashboard_prices_only_supported_krw_markets():
         {"currency": "ETH"},
     ]
 
-    assert api_reporting._price_markets(accounts, {"KRW-ETH", "KRW-XRP"}) == [
-        "KRW-ETH", "KRW-XRP",
+    assert api_reporting._price_markets(accounts) == [
+        "KRW-ETH", "KRW-PURSE", "KRW-XRP",
     ]

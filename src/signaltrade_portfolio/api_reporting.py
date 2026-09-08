@@ -43,13 +43,16 @@ def _dashboard_accounts(user_id: int) -> list[dict]:
         return []
 
 
-def _price_markets(accounts: list[dict], supported: set[str]) -> list[str]:
-    """Return only configured KRW markets that Upbit can price for the dashboard."""
+def _price_markets(accounts: list[dict]) -> list[str]:
+    """Return every KRW market candidate represented in the Upbit account.
+
+    Strategy support and market-price availability are separate concerns.  The
+    price client filters out markets that are no longer listed by Upbit.
+    """
     return sorted({
-        market
+        f"KRW-{row['currency']}"
         for row in accounts
         if row["currency"] != "KRW"
-        and (market := f"KRW-{row['currency']}") in supported
     })
 
 
@@ -114,7 +117,7 @@ def dashboard(db=Depends(get_db), user: AuthenticatedUser = Depends(get_current_
     accounts = _dashboard_accounts(user.id)
     supported = {row.code for row in db.execute(select(supported_market_table.c.code).where(
         supported_market_table.c.enabled.is_(True))).all()}
-    prices = get_prices(_price_markets(accounts, supported))
+    prices = get_prices(_price_markets(accounts))
     balances = [UpbitBalanceOut(currency=row["currency"], balance=float(row["balance"]),
         locked=float(row["locked"]), avg_buy_price=float(row["avg_buy_price"])) for row in accounts
         if float(row["balance"]) + float(row["locked"]) > 0]
@@ -129,7 +132,7 @@ def dashboard(db=Depends(get_db), user: AuthenticatedUser = Depends(get_current_
         evaluation=total*price if price is not None else None
         coin_value += evaluation or 0; managed += state.strategy_volume*(price or 0)
         unallocated_value += state.unallocated_volume*(price or 0)
-        assets.append(ExchangeAssetOut(currency=currency, market=market if market in supported else None,
+        assets.append(ExchangeAssetOut(currency=currency, market=market if price is not None else None,
             supported=market in supported, available=float(row["balance"]), locked=float(row["locked"]),
             total=total, average_buy_price=float(row["avg_buy_price"]), current_price=price,
             evaluation_amount=evaluation, strategy_volume=state.strategy_volume,
