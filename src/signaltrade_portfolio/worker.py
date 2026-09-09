@@ -14,6 +14,7 @@ from signaltrade_portfolio.reconciliation import (
     actual_coin_totals, calculate_reconciliation_state, recorded_strategy_volumes,
 )
 from signaltrade_portfolio.upbit_accounts import get_accounts
+from signaltrade_portfolio.telemetry import observe_worker_task
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,8 @@ def monitor_positions_once() -> tuple[int, int]:
 
 def monitor_positions_safely() -> tuple[int, int] | None:
     try:
-        return monitor_positions_once()
+        with observe_worker_task("position_monitor"):
+            return monitor_positions_once()
     except Exception:
         logger.exception("Portfolio reconciliation cycle failed; retrying next interval")
         return None
