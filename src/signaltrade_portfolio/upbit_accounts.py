@@ -6,6 +6,8 @@ import uuid
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from signaltrade_portfolio.telemetry import observe_external_call
+
 
 class UpbitAccountError(RuntimeError):
     pass
@@ -20,8 +22,9 @@ def get_accounts(*, access_key: str, secret_key: str, base_url: str,
         method="GET",
     )
     try:
-        with urlopen(request, timeout=timeout) as response:
-            result = json.loads(response.read())
+        with observe_external_call("upbit", "get_accounts"):
+            with urlopen(request, timeout=timeout) as response:
+                result = json.loads(response.read())
     except HTTPError as error:
         message = {
             401: "Upbit Access Key 또는 Secret Key가 올바르지 않습니다.",
